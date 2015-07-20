@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -97,6 +98,22 @@ func TestRenameFile(t *testing.T) {
 func TestNoFile(t *testing.T) {
 	_, err := NewTail(fname, Config{Timeout: 0})
 	assert.Equal(t, true, os.IsNotExist(err))
+}
+
+func TestDoesNotLeakGoroutines(t *testing.T) {
+	createFile("")
+	defer removeFile()
+	goroutines := runtime.NumGoroutine()
+	for i := 0; i < 10; i++ {
+		tail, err := NewTail(fname, Config{Timeout: 0})
+		if err != nil {
+			log.Fatal(err)
+		}
+		tail.Close()
+	}
+	if got, expected := runtime.NumGoroutine(), goroutines; got > expected {
+		log.Fatalf("Found a goroutine leak: %v expected, %v found", expected, got)
+	}
 }
 
 func writeContents(f *os.File, contents string) {
