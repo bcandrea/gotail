@@ -44,15 +44,15 @@ func NewTail(fname string, config Config) (*Tail, error) {
 		return nil, err
 	}
 
-	//tail.listenAndReadLines()
-
 	return tail, nil
 }
 
 // Close closes the tail object when finished, closing the file handle and watcher
 func (t *Tail) Close() {
 	t.file.Close()
-	t.watcher.Close()
+	if t.watcher != nil {
+		t.watcher.Close()
+	}
 }
 
 // openAndWatch continually polls the target file to try to set an open file handler and watcher.
@@ -80,9 +80,8 @@ func (t *Tail) openAndWatch() error {
 				}
 
 			}
-			newFile = false
 
-			err = t.watchFile()
+			err = t.watchFile(newFile)
 
 			if err == nil {
 				timeout <- nil
@@ -140,29 +139,35 @@ func (t *Tail) openFile(newFile bool) (err error) {
 
 // watchFile assigns a new fsnotify watcher to the file if possible.
 // It it watches for any signals that lead to file change, and responds accordingly.
-func (t *Tail) watchFile() error {
+func (t *Tail) watchFile(newFile bool) error {
 	if t.watcher != nil {
 		t.watcher.Close()
 	}
 
-	watcher, err := fsnotify.NewWatcher()
+	var err error
+	t.watcher, err = fsnotify.NewWatcher()
 	if err != nil {
 		return err
 	}
-	t.watcher = watcher
 
 	err = t.watcher.Add(t.fname)
-
 	if err != nil {
 		return err
 	}
 
 	go func() {
+		// Start reading at the beginning of the file if new
+		if newFile {
+			t.readLines()
+		}
+
 		for {
+			closed := false
 			select {
 			case evt, ok := <-t.watcher.Events:
 				// Exit if the channel is closed
 				if !ok {
+					closed = true
 					break
 				}
 				if evt.Op == fsnotify.Create || evt.Op == fsnotify.Rename || evt.Op == fsnotify.Remove {
@@ -170,19 +175,22 @@ func (t *Tail) watchFile() error {
 						log.Fatalln("open and watch failed:", err)
 					}
 				}
-				if evt.Op == fsnotify.Write {
+				if evt.Op&fsnotify.Write == fsnotify.Write {
 					t.readLines()
 				}
 			case err, ok := <-t.watcher.Errors:
 				// Exit if the channel is closed
 				if !ok {
+					closed = true
 					break
 				}
 				if err != nil {
 					log.Fatalln("Watcher err:", err)
 				}
 			}
-			break
+			if closed {
+				break
+			}
 		}
 	}()
 

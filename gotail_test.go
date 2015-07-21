@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"runtime"
-	"sync"
 	"testing"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 )
 
 var fname = "test.log"
-var wg sync.WaitGroup
 
 func TestDoesNotLeakGoroutines(t *testing.T) {
 	createFile("")
@@ -55,6 +53,7 @@ func TestAppendFile(t *testing.T) {
 
 	tail, err := NewTail(fname, Config{Timeout: 10})
 	assert.Equal(t, err, nil)
+	defer tail.Close()
 
 	var line string
 
@@ -81,6 +80,7 @@ func TestWriteNewFile(t *testing.T) {
 
 	go func() {
 		tail, _ = NewTail(fname, Config{Timeout: 10})
+		defer tail.Close()
 
 		line = <-tail.Lines
 		done <- true
@@ -106,6 +106,7 @@ func TestRenameFile(t *testing.T) {
 	// Sets up background tailer
 	go func() {
 		tail, _ = NewTail(fname, Config{Timeout: 10})
+		defer tail.Close()
 
 		line = <-tail.Lines
 		done <- true
