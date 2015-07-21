@@ -12,8 +12,42 @@ import (
 	"github.com/bmizerany/assert"
 )
 
-var fname string = "test.log"
+var fname = "test.log"
 var wg sync.WaitGroup
+
+func TestDoesNotLeakGoroutines(t *testing.T) {
+	createFile("")
+	defer removeFile()
+
+	// Measure the number of newly created goroutines
+	goroutines := runtime.NumGoroutine()
+	for i := 0; i < 5; i++ {
+		tail, err := NewTail(fname, Config{Timeout: 2})
+		if err != nil {
+			log.Fatal(err)
+		}
+		tail.Close()
+	}
+	time.Sleep(2 * time.Second)
+	delta5 := runtime.NumGoroutine() - goroutines
+
+	// Measure it again with more iterations
+	goroutines = runtime.NumGoroutine()
+	for i := 0; i < 10; i++ {
+		tail, err := NewTail(fname, Config{Timeout: 2})
+		if err != nil {
+			log.Fatal(err)
+		}
+		tail.Close()
+	}
+	time.Sleep(2 * time.Second)
+	delta10 := runtime.NumGoroutine() - goroutines
+
+	// If the difference increases with the number of iterations, there is a leak
+	if delta10 > delta5 {
+		log.Fatalf("Found a goroutine leak: %v created with 10 iterations, %v created with 5", delta10, delta5)
+	}
+}
 
 func TestAppendFile(t *testing.T) {
 	createFile("")
@@ -98,22 +132,6 @@ func TestRenameFile(t *testing.T) {
 func TestNoFile(t *testing.T) {
 	_, err := NewTail(fname, Config{Timeout: 0})
 	assert.Equal(t, true, os.IsNotExist(err))
-}
-
-func TestDoesNotLeakGoroutines(t *testing.T) {
-	createFile("")
-	defer removeFile()
-	goroutines := runtime.NumGoroutine()
-	for i := 0; i < 10; i++ {
-		tail, err := NewTail(fname, Config{Timeout: 0})
-		if err != nil {
-			log.Fatal(err)
-		}
-		tail.Close()
-	}
-	if got, expected := runtime.NumGoroutine(), goroutines; got > expected {
-		log.Fatalf("Found a goroutine leak: %v expected, %v found", expected, got)
-	}
 }
 
 func writeContents(f *os.File, contents string) {

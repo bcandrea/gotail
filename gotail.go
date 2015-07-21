@@ -44,7 +44,7 @@ func NewTail(fname string, config Config) (*Tail, error) {
 		return nil, err
 	}
 
-	tail.listenAndReadLines()
+	//tail.listenAndReadLines()
 
 	return tail, nil
 }
@@ -74,7 +74,7 @@ func (t *Tail) openAndWatch() error {
 
 				if t.config.Timeout == 0 {
 					timeout <- err
-					return
+					break
 				} else {
 					continue
 				}
@@ -86,7 +86,7 @@ func (t *Tail) openAndWatch() error {
 
 			if err == nil {
 				timeout <- nil
-				return
+				break
 			}
 		}
 	}()
@@ -160,39 +160,46 @@ func (t *Tail) watchFile() error {
 	go func() {
 		for {
 			select {
-			case evt := <-t.watcher.Events:
+			case evt, ok := <-t.watcher.Events:
+				// Exit if the channel is closed
+				if !ok {
+					break
+				}
 				if evt.Op == fsnotify.Create || evt.Op == fsnotify.Rename || evt.Op == fsnotify.Remove {
 					if err = t.openAndWatch(); err != nil {
 						log.Fatalln("open and watch failed:", err)
 					}
 				}
-			case err := <-t.watcher.Errors:
+				if evt.Op == fsnotify.Write {
+					t.readLines()
+				}
+			case err, ok := <-t.watcher.Errors:
+				// Exit if the channel is closed
+				if !ok {
+					break
+				}
 				if err != nil {
 					log.Fatalln("Watcher err:", err)
 				}
 			}
+			break
 		}
 	}()
 
 	return nil
 }
 
-// listenAndReadLines continually polls the file in question,
-// reading any new lines that gets added to the file.
-func (t *Tail) listenAndReadLines() {
-	go func() {
-		for {
-			if t.reader == nil {
-				continue
-			}
+// readLines reads any new lines that gets added to the file.
+func (t *Tail) readLines() {
+	if t.reader == nil {
+		return
+	}
 
-			line, err := t.reader.ReadString('\n')
+	line, err := t.reader.ReadString('\n')
 
-			if err == io.EOF {
-				continue
-			}
+	if err == io.EOF {
+		return
+	}
 
-			t.Lines <- strings.TrimRight(line, "\n")
-		}
-	}()
+	t.Lines <- strings.TrimRight(line, "\n")
 }
