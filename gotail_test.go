@@ -14,6 +14,11 @@ import (
 var fname = "test.log"
 
 func TestDoesNotLeakGoroutines(t *testing.T) {
+
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+
 	createFile("")
 	defer removeFile()
 
