@@ -172,7 +172,7 @@ func (t *Tail) watchFile(newFile bool) error {
 				}
 				if evt.Op&(fsnotify.Create|fsnotify.Rename|fsnotify.Remove) != 0 {
 					if err = t.openAndWatch(); err != nil {
-						log.Fatalln("open and watch failed:", err)
+						log.Fatalln("[FATA] open and watch failed: ", err)
 					}
 				}
 				if evt.Op&fsnotify.Write == fsnotify.Write {
@@ -185,7 +185,7 @@ func (t *Tail) watchFile(newFile bool) error {
 					break
 				}
 				if err != nil {
-					log.Fatalln("Watcher err:", err)
+					log.Println("[WARN] watcher error: ", err)
 				}
 			}
 			if closed {
