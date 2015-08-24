@@ -48,9 +48,8 @@ func NewTail(fname string, config Config) (*Tail, error) {
 	return tail, nil
 }
 
-// Close closes the tail object when finished, closing the file handle and watcher
+// Close deconstructs the tail object when finished, closing the file watcher.
 func (t *Tail) Close() {
-	//t.file.Close()
 	if t.watcher != nil {
 		t.watcher.Close()
 	}
@@ -206,7 +205,7 @@ func (t *Tail) readLines(newFile bool) {
 	if err != nil {
 		return
 	}
-	defer t.Close()
+	defer t.file.Close()
 
 	if t.reader == nil {
 		return
