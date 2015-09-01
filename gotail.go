@@ -20,7 +20,6 @@ type Tail struct {
 	watcher *fsnotify.Watcher
 	fname   string
 	file    *os.File
-	pos     int64
 	config  Config
 }
 
@@ -48,8 +47,9 @@ func NewTail(fname string, config Config) (*Tail, error) {
 	return tail, nil
 }
 
-// Close deconstructs the tail object when finished, closing the file watcher.
+// Close closes the tail object when finished, closing the file handle and watcher
 func (t *Tail) Close() {
+	t.file.Close()
 	if t.watcher != nil {
 		t.watcher.Close()
 	}
@@ -67,7 +67,6 @@ func (t *Tail) openAndWatch() error {
 	go func() {
 		for {
 			err = t.openFile(newFile)
-			t.Close()
 			if err != nil {
 				if os.IsNotExist(err) && newFile == false {
 					newFile = true
@@ -120,13 +119,13 @@ func (t *Tail) openFile(newFile bool) (err error) {
 		t.file.Close()
 	}
 
-	t.file, err = os.Open(t.fname)
+	t.file, err = openFile(t.fname)
 	if err != nil {
 		return err
 	}
 
 	if !newFile {
-		_, err = t.file.Seek(t.pos, 0)
+		_, err = t.file.Seek(0, 2)
 	}
 
 	if err != nil {
@@ -159,7 +158,7 @@ func (t *Tail) watchFile(newFile bool) error {
 	go func() {
 		// Start reading at the beginning of the file if new
 		if newFile {
-			t.readLines(true)
+			t.readLines()
 		}
 
 		for {
@@ -177,7 +176,7 @@ func (t *Tail) watchFile(newFile bool) error {
 					}
 				}
 				if evt.Op&fsnotify.Write == fsnotify.Write {
-					t.readLines(newFile)
+					t.readLines()
 				}
 			case err, ok := <-t.watcher.Errors:
 				// Exit if the channel is closed
@@ -199,26 +198,15 @@ func (t *Tail) watchFile(newFile bool) error {
 }
 
 // readLines reads any new lines that gets added to the file.
-func (t *Tail) readLines(newFile bool) {
-
-	err := t.openFile(newFile)
-	if err != nil {
-		return
-	}
-	defer t.file.Close()
-
+func (t *Tail) readLines() {
 	if t.reader == nil {
 		return
 	}
+
 	line, err := t.reader.ReadString('\n')
 
 	if err == io.EOF {
 		return
-	}
-
-	t.pos, err = t.file.Seek(0, 1)
-	if err != nil {
-		log.Println("[WARN] could not save file offset: ", err)
 	}
 
 	t.Lines <- strings.TrimRight(line, "\n")
